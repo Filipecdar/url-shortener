@@ -20,7 +20,7 @@ type CreateLinkResponse struct {
 
 type Service struct {
 	baseURL          string
-	mutex            sync.Mutex
+	mutex            sync.RWMutex
 	shortenedURLData map[string]string
 }
 
@@ -39,7 +39,11 @@ func (service *Service) Routes() http.Handler {
 		fmt.Fprint(writer, "ok")
 	})
 
-	router.Post("/api/links", service.HandleCreateLink)
+	router.Route("/api", func(r chi.Router) {
+		r.Post("/links", service.HandleCreateLink)
+	})
+
+	router.Get("/{shortcode}", service.HandleRedirect)
 
 	return router
 }
@@ -65,6 +69,25 @@ func (service *Service) HandleCreateLink(writer http.ResponseWriter, request *ht
 	if err := json.NewEncoder(writer).Encode(createLinkResponse); err != nil {
 		http.Error(writer, "failed to encode response", http.StatusInternalServerError)
 	}
+}
+
+func (service *Service) HandleRedirect(writer http.ResponseWriter, request *http.Request) {
+	shortcode := chi.URLParam(request, "shortcode")
+	if shortcode == "" {
+		http.NotFound(writer, request)
+		return
+	}
+
+	service.mutex.RLock()
+	originalURL, exists := service.shortenedURLData[shortcode]
+	service.mutex.RUnlock()
+
+	if !exists {
+		http.NotFound(writer, request)
+		return
+	}
+
+	http.Redirect(writer, request, originalURL, http.StatusFound)
 }
 
 func removeTrailingSlash(input string) string {
