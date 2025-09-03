@@ -3,7 +3,10 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -50,14 +53,20 @@ func (service *Service) Routes() http.Handler {
 
 func (service *Service) HandleCreateLink(writer http.ResponseWriter, request *http.Request) {
 	var createLinkRequest CreateLinkRequest
-	if err := json.NewDecoder(request.Body).Decode(&createLinkRequest); err != nil || createLinkRequest.URL == "" {
-		http.Error(writer, "invalid json", http.StatusBadRequest)
+	if err := json.NewDecoder(request.Body).Decode(&createLinkRequest); err != nil {
+		http.Error(writer, "invalid json body", http.StatusBadRequest)
+		return
+	}
+
+	longURL := strings.TrimSpace(createLinkRequest.URL)
+	if validationErr := ValidateURL(longURL); validationErr != nil {
+		http.Error(writer, validationErr.Error(), http.StatusBadRequest)
 		return
 	}
 
 	service.mutex.Lock()
 	shortcode := fmt.Sprintf("id%d", len(service.shortenedURLData)+1)
-	service.shortenedURLData[shortcode] = createLinkRequest.URL
+	service.shortenedURLData[shortcode] = longURL
 	service.mutex.Unlock()
 
 	createLinkResponse := CreateLinkResponse{
@@ -88,6 +97,38 @@ func (service *Service) HandleRedirect(writer http.ResponseWriter, request *http
 	}
 
 	http.Redirect(writer, request, originalURL, http.StatusFound)
+}
+
+func ValidateURL(input string) error {
+	if input == "" {
+		return fmt.Errorf("url is required")
+	}
+
+	parsed, err := url.ParseRequestURI(input)
+	if err != nil {
+		return fmt.Errorf("url is not a valid URI")
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("url scheme must be http or https")
+	}
+
+	if parsed.Host == "" {
+		return fmt.Errorf("url must contain a host")
+	}
+
+	if strings.HasPrefix(parsed.Host, ":") {
+		return fmt.Errorf("url host is invalid")
+	}
+
+	host := parsed.Host
+	if h, _, splitErr := net.SplitHostPort(parsed.Host); splitErr == nil {
+		host = h
+	}
+	if ip := net.ParseIP(host); ip == nil {
+	}
+
+	return nil
 }
 
 func removeTrailingSlash(input string) string {
