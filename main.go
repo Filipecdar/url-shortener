@@ -1,26 +1,23 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/Filipecdar/url-shortener/internal/config"
+	"github.com/Filipecdar/url-shortener/internal/httpapi"
 )
 
 func main() {
-	cfg := config.FromEnv()
+	applicationConfig := config.FromEnv()
 
-	r := chi.NewRouter()
-	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
-	})
+	urlShortenerService := httpapi.NewService(applicationConfig.PublicBaseURL)
+	httpRouter := urlShortenerService.Routes()
 
-	addr := ":" + cfg.Port
-	log.Println("listening on", addr, "public:", cfg.PublicBaseURL)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	serverAddress := ":" + applicationConfig.Port
+	log.Println("Server starting on", serverAddress, "public:", applicationConfig.PublicBaseURL)
+
+	if err := http.ListenAndServe(serverAddress, httpRouter); err != nil {
 		log.Fatal(err)
 	}
 }
