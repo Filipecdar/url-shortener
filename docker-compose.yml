@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: urlshort-postgres
+    environment:
+      POSTGRES_USER: urlshort
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: urlshort
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urlshort -d urlshort"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    container_name: urlshort-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      PUBLIC_BASE_URL: "http://localhost:8080"
+      DATABASE_URL: "postgres://urlshort:secret@postgres:5432/urlshort?sslmode=disable"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
